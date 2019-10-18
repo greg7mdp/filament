@@ -36,27 +36,17 @@
 
 #include "fg/ResourceAllocator.h"
 
-#include "private/backend/Program.h"
 
 #include <private/filament/SibGenerator.h>
 
-#include <filament/Exposure.h>
 #include <filament/MaterialEnums.h>
 
-#include <filaflat/ShaderBuilder.h>
-
 #include <utils/compiler.h>
-#include <utils/CString.h>
 #include <utils/Log.h>
 #include <utils/Panic.h>
 #include <utils/Systrace.h>
 
-#include <math/fast.h>
-#include <math/scalar.h>
-
-#include <functional>
-
-#include <stdio.h>
+#include <memory>
 
 #include "generated/resources/materials.h"
 
@@ -236,7 +226,7 @@ void FEngine::init() {
 
     mPostProcessManager.init();
     mLightManager.init(*this);
-    mDFG.reset(new DFG(*this));
+    mDFG = std::make_unique<DFG>(*this);
 }
 
 FEngine::~FEngine() noexcept {
@@ -759,6 +749,25 @@ bool FEngine::execute() {
     return true;
 }
 
+void FEngine::destroy(FEngine* engine) {
+    if (engine) {
+        std::unique_ptr<FEngine> filamentEngine;
+
+        std::unique_lock<std::mutex> guard(sEnginesLock);
+        auto const& pos = sEngines.find(engine);
+        if (pos != sEngines.end()) {
+            std::swap(filamentEngine, pos->second);
+            sEngines.erase(pos);
+        }
+        guard.unlock();
+
+        // Make sure to call into shutdown() without the lock held
+        if (filamentEngine) {
+            filamentEngine->shutdown();
+        }
+    }
+}
+
 } // namespace details
 
 // ------------------------------------------------------------------------------------------------
@@ -772,27 +781,14 @@ Engine* Engine::create(Backend backend, Platform* platform, void* sharedGLContex
 }
 
 void Engine::destroy(Engine* engine) {
-    destroy(&engine);
+    FEngine::destroy(upcast(engine));
 }
 
-void Engine::destroy(Engine** engine) {
-    if (engine) {
-        std::unique_ptr<FEngine> filamentEngine;
-
-        std::unique_lock<std::mutex> guard(sEnginesLock);
-        auto const& pos = sEngines.find(*engine);
-        if (pos != sEngines.end()) {
-            std::swap(filamentEngine, pos->second);
-            sEngines.erase(pos);
-        }
-        guard.unlock();
-
-        // Make sure to call into shutdown() without the lock held
-        if (filamentEngine) {
-            filamentEngine->shutdown();
-            // clear the user's handle
-            *engine = nullptr;
-        }
+void Engine::destroy(Engine** pEngine) {
+    if (pEngine) {
+        Engine* engine = *pEngine;
+        FEngine::destroy(upcast(engine));
+        *pEngine = nullptr;
     }
 }
 

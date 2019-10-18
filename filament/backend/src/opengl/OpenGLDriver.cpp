@@ -589,8 +589,6 @@ void OpenGLDriver::textureStorage(OpenGLDriver::GLTexture* t,
                 // TODO: use glTexStorage2DMultisample() on GL 4.3 and above
                 glTexImage2DMultisample(t->gl.target, t->samples, t->gl.internalFormat,
                         GLsizei(width), GLsizei(height), GL_TRUE);
-#else
-#   error "GL/GLES header version not supported"
 #endif
             } else {
                 PANIC_LOG("GL_TEXTURE_2D_MULTISAMPLE is not supported");
@@ -2432,7 +2430,8 @@ void OpenGLDriver::readPixels(Handle<HwRenderTarget> src,
 // Rendering ops
 // ------------------------------------------------------------------------------------------------
 
-void OpenGLDriver::beginFrame(int64_t monotonic_clock_ns, uint32_t frameId) {
+void OpenGLDriver::beginFrame(int64_t monotonic_clock_ns, uint32_t frameId,
+        backend::FrameFinishedCallback, void*) {
     auto& gl = mContext;
     insertEventMarker("beginFrame");
     if (UTILS_UNLIKELY(!mExternalStreams.empty())) {
